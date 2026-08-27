@@ -1,0 +1,27 @@
+name: Daily Partner Discovery
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  run-discovery:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run discovery script
+        env:
+          SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: python run_discovery.py
