@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Панель поиска партнёров — ставки на спорт</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: #0D0F14;
+    color: #E5E7EB;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, sans-serif;
+    padding: 32px 28px;
+  }
+  .eyebrow { font-family: 'Courier New', monospace; font-size: 11px; letter-spacing: 0.12em; color: #60A5FA; margin-bottom: 6px; }
+  h1 { font-size: 26px; font-weight: 700; margin: 0 0 24px 0; letter-spacing: -0.01em; }
+  .header-row { display: flex; justify-content: space-between; align-items: flex-end; flex-wrap: wrap; gap: 12px; margin-bottom: 28px; }
+  .live-badge { display: flex; align-items: center; gap: 8px; font-family: 'Courier New', monospace; font-size: 12px; color: #9CA3AF; border: 1px solid #262B36; border-radius: 999px; padding: 6px 14px; }
+  .live-dot { width: 6px; height: 6px; border-radius: 50%; background: #34D399; }
+  .stat-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 22px; }
+  .stat-card { position: relative; background: #161922; border: 1px solid #232733; border-radius: 10px; padding: 18px 18px 16px; overflow: hidden; }
+  .stat-accent { position: absolute; top: 0; left: 0; width: 3px; height: 100%; }
+  .stat-value { font-family: 'Courier New', monospace; font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+  .stat-label { font-size: 12.5px; color: #9CA3AF; }
+  .card { background: #161922; border: 1px solid #232733; border-radius: 10px; padding: 20px; margin-bottom: 18px; }
+  .card-title { font-size: 15px; font-weight: 600; margin-bottom: 16px; color: #F3F4F6; }
+  .keyword-row { display: grid; grid-template-columns: 240px 1fr 36px; align-items: center; gap: 12px; margin-bottom: 12px; }
+  .keyword-text { font-size: 12.5px; color: #E5E7EB; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+  .keyword-segment { font-size: 10.5px; color: #6B7280; display: block; }
+  .bar-track { height: 8px; background: #1F2330; border-radius: 4px; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 4px; }
+  .keyword-count { font-family: 'Courier New', monospace; font-size: 12.5px; color: #9CA3AF; text-align: right; }
+  .table-header-row { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .filters { display: flex; gap: 8px; }
+  select { background: #1F2330; color: #E5E7EB; border: 1px solid #2C3140; border-radius: 6px; padding: 6px 10px; font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th { text-align: left; padding: 8px 10px; color: #6B7280; font-weight: 500; font-size: 11.5px; text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 1px solid #232733; }
+  td { padding: 10px; color: #D1D5DB; border-bottom: 1px solid #1C202A; }
+  td.name { color: #F3F4F6; font-weight: 500; max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  td.keyword { color: #9CA3AF; font-family: 'Courier New', monospace; font-size: 11px; max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  a { color: #F3F4F6; text-decoration: none; }
+  .pill { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 500; }
+  .empty, .loading, .error { padding: 24px; text-align: center; color: #6B7280; }
+  .error { color: #F87171; background: #1F2937; border: 1px solid #4A1D1D; border-radius: 10px; }
+</style>
+</head>
+<body>
+
+<div class="header-row">
+  <div>
+    <div class="eyebrow">СТАВКИ НА СПОРТ · PARTNER DISCOVERY</div>
+    <h1>Панель поиска партнёров</h1>
+  </div>
+  <div class="live-badge"><span class="live-dot"></span>Реальные данные</div>
+</div>
+
+<div id="content">
+  <div class="loading">Загружаю данные из базы...</div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://jicqfdxfirgpmxruriqk.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_UN1xjKhC00BbsvVQvgBWzw_K5vbbVW1";
+
+const STATUS_CONFIG = {
+  new: { label: "Не отправлено", color: "#6B7280", bg: "#1F2937" },
+  sent: { label: "Отправлено", color: "#60A5FA", bg: "#1E3A5F" },
+  replied: { label: "Ответил", color: "#34D399", bg: "#134E3A" },
+  ignored_5d: { label: "Игнор 5+ дней", color: "#FBBF24", bg: "#4A3B10" },
+  opted_out: { label: "Отписался", color: "#F87171", bg: "#4A1D1D" },
+};
+const SEGMENT_LABEL = {
+  publisher_arbitrage: "Паблишер / арбитражник",
+  cold_outreach_site: "Сайт (холодная рассылка)",
+};
+
+let allSources = [];
+let allContacts = [];
+let segmentFilter = "all";
+let statusFilter = "all";
+
+async function supabaseFetch(path) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${SUPABASE_ANON_KEY}`,
+    },
+  });
+  if (!res.ok) throw new Error(`Supabase error ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
+function contactsForSource(sourceId) {
+  return allContacts.filter(c => c.source_id === sourceId).map(c => c.contact_value).join(", ") || "не найден";
+}
+
+function render() {
+  const content = document.getElementById("content");
+
+  const filtered = allSources.filter(s => {
+    if (segmentFilter !== "all" && s.segment !== segmentFilter) return false;
+    return true; // статус outreach пока не ведётся — все "new"
+  });
+
+  const total = allSources.length;
+  const withContact = allSources.filter(s => contactsForSource(s.id) !== "не найден").length;
+
+  const keywordMap = {};
+  for (const s of allSources) {
+    const key = s.found_via_query || "—";
+    if (!keywordMap[key]) keywordMap[key] = { keyword: key, found: 0, segment: s.segment };
+    keywordMap[key].found++;
+  }
+  const keywordStats = Object.values(keywordMap).sort((a, b) => b.found - a.found).slice(0, 8);
+  const maxFound = Math.max(1, ...keywordStats.map(k => k.found));
+
+  content.innerHTML = `
+    <div class="stat-grid">
+      <div class="stat-card"><div class="stat-accent" style="background:#60A5FA"></div><div class="stat-value">${total}</div><div class="stat-label">Найдено источников</div></div>
+      <div class="stat-card"><div class="stat-accent" style="background:#34D399"></div><div class="stat-value">${withContact}</div><div class="stat-label">С контактом</div></div>
+      <div class="stat-card"><div class="stat-accent" style="background:#A78BFA"></div><div class="stat-value">0</div><div class="stat-label">Ответили</div></div>
+      <div class="stat-card"><div class="stat-accent" style="background:#FBBF24"></div><div class="stat-value">0%</div><div class="stat-label">Response rate</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Топ ключевых запросов по находкам</div>
+      ${keywordStats.map(k => `
+        <div class="keyword-row">
+          <div>
+            <span class="keyword-text" title="${k.keyword}">${k.keyword}</span>
+            <span class="keyword-segment">${SEGMENT_LABEL[k.segment] || k.segment}</span>
+          </div>
+          <div class="bar-track"><div class="bar-fill" style="width:${(k.found / maxFound) * 100}%;background:${k.segment === 'publisher_arbitrage' ? '#60A5FA' : '#34D399'}"></div></div>
+          <div class="keyword-count">${k.found}</div>
+        </div>
+      `).join("")}
+    </div>
+
+    <div class="card">
+      <div class="table-header-row">
+        <div class="card-title">Найденные источники (${filtered.length})</div>
+        <div class="filters">
+          <select id="segmentSelect">
+            <option value="all">Все сегменты</option>
+            <option value="publisher_arbitrage">Паблишеры / арбитраж</option>
+            <option value="cold_outreach_site">Сайты (cold outreach)</option>
+          </select>
+        </div>
+      </div>
+      <table>
+        <thead><tr><th>Источник</th><th>Тип</th><th>Найден по ключу</th><th>Контакт</th><th>Статус</th></tr></thead>
+        <tbody>
+          ${filtered.slice(0, 150).map(s => `
+            <tr>
+              <td class="name"><a href="${s.url}" target="_blank">${s.title || s.url}</a></td>
+              <td>${s.source_type}</td>
+              <td class="keyword" title="${s.found_via_query || ''}">${s.found_via_query || ''}</td>
+              <td>${contactsForSource(s.id)}</td>
+              <td><span class="pill" style="color:${STATUS_CONFIG.new.color};background:${STATUS_CONFIG.new.bg}">${STATUS_CONFIG.new.label}</span></td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+      ${filtered.length === 0 ? '<div class="empty">Ничего не найдено</div>' : ''}
+    </div>
+  `;
+
+  document.getElementById("segmentSelect").value = segmentFilter;
+  document.getElementById("segmentSelect").addEventListener("change", (e) => {
+    segmentFilter = e.target.value;
+    render();
+  });
+}
+
+async function load() {
+  try {
+    const [sources, contacts] = await Promise.all([
+      supabaseFetch("sources?select=*&order=found_at.desc&limit=500"),
+      supabaseFetch("contacts?select=*"),
+    ]);
+    allSources = sources;
+    allContacts = contacts;
+    render();
+  } catch (e) {
+    document.getElementById("content").innerHTML = `<div class="error"><strong>Не удалось загрузить данные</strong><br>${e.message}</div>`;
+  }
+}
+
+load();
+</script>
+
+</body>
+</html>
