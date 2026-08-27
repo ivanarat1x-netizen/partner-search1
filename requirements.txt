@@ -1,0 +1,2 @@
+google-search-results
+psycopg2-binary
